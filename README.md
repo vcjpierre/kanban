@@ -1,5 +1,7 @@
 # Full Stack Kanban App
 
-- ReactJS
-- NodeJS, 
+## ⛏️ Built using:
+
+- React.js (Material UI)
+- Node.js (Express)
 - MongoDB
