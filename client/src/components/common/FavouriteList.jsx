@@ -22,7 +22,7 @@ const FavouriteList = () => {
       }
     }
     getBoards()
-  }, [])
+  }, [dispatch])
 
   useEffect(() => {
     const index = list.findIndex(e => e.id === boardId)

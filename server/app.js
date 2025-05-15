@@ -48,7 +48,7 @@ if (process.env.NODE_ENV !== 'production') {
   initializeDatabase();
 }
 
-// En producción, para Vercel, la conexión se inicializará en la primera solicitud
+// En producción, la conexión se inicializará en la primera solicitud
 app.use(async (req, res, next) => {
   if (process.env.NODE_ENV === 'production') {
     await initializeDatabase();
@@ -61,6 +61,7 @@ if (process.env.NODE_ENV !== 'production') {
   const PORT = process.env.PORT || 5000;
   app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
+    console.log('\x1b[32m%s\x1b[0m', `✅ Servidor corriendo en http://localhost:${PORT}`);
   });
 }
 
