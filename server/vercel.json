@@ -5,7 +5,8 @@
       "src": "app.js",
       "use": "@vercel/node",
       "config": {
-        "maxLambdaSize": "50mb"
+        "maxLambdaSize": "50mb",
+        "maxDuration": 10
       }
     }
   ],
@@ -23,10 +24,5 @@
   },
   "github": {
     "silent": true
-  },
-  "functions": {
-    "app.js": {
-      "maxDuration": 10
-    }
   }
 }
