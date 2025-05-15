@@ -16,16 +16,47 @@ exports.register = async (req, res) => {
       process.env.TOKEN_SECRET_KEY,
       { expiresIn: '24h' }
     )
-    res.status(201).json({ user, token })
-  } catch (err) {
-    res.status(500).json(err)
+    res.status(201).json({ user, token })  } catch (err) {
+    console.error('Registration error:', err);
+    // Check for duplicate key error (username already exists)
+    if (err.code === 11000) {
+      return res.status(400).json({
+        errors: [
+          {
+            param: 'username',
+            msg: 'Username already used'
+          }
+        ]
+      });
+    }
+    // Database connection issues
+    if (err.name === 'MongooseError' || err.name === 'MongoError' || 
+        err.name === 'MongoServerError' || (err.message && err.message.includes('timeout'))) {
+      return res.status(500).json({
+        errors: [{ 
+          param: 'database',
+          msg: 'Database connection error. Please try again later.'
+        }]
+      });
+    }
+    res.status(500).json({
+      errors: [{ 
+        param: 'server',
+        msg: 'An unexpected error occurred'
+      }]
+    });
   }
 }
 
 exports.login = async (req, res) => {
   const { username, password } = req.body
   try {
-    const user = await User.findOne({ username }).select('password username')
+    // Add timeout to the query to avoid hanging indefinitely
+    const user = await User.findOne({ username })
+      .select('password username')
+      .maxTimeMS(8000)  // Set maximum execution time to 8 seconds
+      .exec();
+      
     if (!user) {
       return res.status(401).json({
         errors: [
@@ -59,11 +90,25 @@ exports.login = async (req, res) => {
       { id: user._id },
       process.env.TOKEN_SECRET_KEY,
       { expiresIn: '24h' }
-    )
-
+    );
     res.status(200).json({ user, token })
 
   } catch (err) {
-    res.status(500).json(err)
+    console.error('Login error:', err);    // Provide a more useful error message for MongoDB connection issues
+    if (err.name === 'MongooseError' || err.name === 'MongoError' || 
+        err.name === 'MongoServerError' || (err.message && err.message.includes('timeout'))) {
+      return res.status(500).json({
+        errors: [{ 
+          param: 'database',
+          msg: 'Database connection error. Please try again later.'
+        }]
+      });
+    }
+    res.status(500).json({
+      errors: [{ 
+        param: 'server',
+        msg: 'An unexpected error occurred'
+      }]
+    });
   }
 }

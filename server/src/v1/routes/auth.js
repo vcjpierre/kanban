@@ -15,13 +15,26 @@ router.post(
   ),
   body('confirmPassword').isLength({ min: 8 }).withMessage(
     'confirmPassword must be at least 8 characters'
-  ),
-  body('username').custom(value => {
-    return User.findOne({ username: value }).then(user => {
+  ),  body('username').custom(async (value) => {
+    try {
+      const user = await User.findOne({ username: value })
+        .maxTimeMS(8000)
+        .lean() // Use lean for faster queries that don't need the full document
+        .exec();
+        
       if (user) {
         return Promise.reject('username already used')
       }
-    })
+      return true;
+    } catch (error) {
+      console.error('Username validation error:', error);
+      // If this is a timeout error, don't block the user experience completely
+      if (error.name === 'MongoServerError' && error.message.includes('timeout')) {
+        console.warn('Database timeout on username check - allowing to proceed');
+        return true; // Let it proceed and we'll catch duplicates at the DB level
+      }
+      throw new Error('Error checking username availability');
+    }
   }),
   validation.validate,
   userController.register

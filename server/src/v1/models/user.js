@@ -5,7 +5,8 @@ const userSchema = new mongoose.Schema({
   username: {
     type: String,
     required: true,
-    unique: true
+    unique: true,
+    index: true // Explicitly create an index for better query performance
   },
   password: {
     type: String,
@@ -13,5 +14,8 @@ const userSchema = new mongoose.Schema({
     select: false
   }
 }, schemaOptions)
+
+// Create a compound index for username to improve findOne performance
+userSchema.index({ username: 1 });
 
 module.exports = mongoose.model('User', userSchema)
