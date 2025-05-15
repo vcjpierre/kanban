@@ -22,11 +22,67 @@ const tokenDecode = (req) => {
 exports.verifyToken = async (req, res, next) => {
   const tokenDecoded = tokenDecode(req)
   if (tokenDecoded) {
-    const user = await User.findById(tokenDecoded.id)
-    if (!user) return res.status(401).json('Unathorized')
-    req.user = user
-    next()
+    try {
+      // Verificar que la conexión a MongoDB esté activa
+      const readyState = require('mongoose').connection.readyState;
+      if (readyState !== 1) {
+        console.warn('MongoDB connection not ready during token verification. Status:', readyState);
+        return res.status(503).json({
+          errors: [{
+            param: 'database',
+            msg: 'Database connection error. Please try again later.'
+          }]
+        });
+      }
+      
+      // Usar lean() para mejor rendimiento y agregar timeout para evitar bloqueos
+      const user = await User.findById(tokenDecoded.id)
+        .lean()
+        .maxTimeMS(5000)
+        .exec();
+        
+      if (!user) {
+        return res.status(401).json({
+          errors: [{
+            param: 'auth',
+            msg: 'Unauthorized: Invalid user session'
+          }]
+        });
+      }
+      
+      req.user = user;
+      next();
+    } catch (error) {
+      console.error('Error verifying token:', error);
+      
+      // Manejar errores específicos de MongoDB
+      if (
+        error.name === 'MongoError' ||
+        error.name === 'MongooseError' ||
+        error.name === 'MongoServerError' ||
+        (error.message && error.message.includes('timeout'))
+      ) {
+        return res.status(503).json({
+          errors: [{
+            param: 'database',
+            msg: 'Database connection error. Please try again later.'
+          }]
+        });
+      }
+      
+      return res.status(500).json({
+        errors: [{
+          param: 'server',
+          msg: 'Error verifying authentication'
+        }]
+      });
+    }
   } else {
-    res.status(401).json('Unathorized')
+    res.status(401).json({
+      errors: [{
+        param: 'auth',
+        msg: 'Unauthorized: Invalid or missing token'
+      }]
+    });
   }
 }

@@ -51,10 +51,22 @@ exports.register = async (req, res) => {
 exports.login = async (req, res) => {
   const { username, password } = req.body
   try {
+    // Verificar que la conexión a MongoDB esté activa
+    if (mongoose.connection.readyState !== 1) {
+      console.warn('MongoDB connection not ready during login attempt');
+      return res.status(503).json({
+        errors: [{
+          param: 'database',
+          msg: 'Database connection error. Please try again later.'
+        }]
+      });
+    }
+    
     // Add timeout to the query to avoid hanging indefinitely
     const user = await User.findOne({ username })
       .select('password username')
-      .maxTimeMS(8000)  // Set maximum execution time to 8 seconds
+      .maxTimeMS(10000)  // Increased maximum execution time to 10 seconds
+      .lean()           // Use lean queries for better performance
       .exec();
       
     if (!user) {
