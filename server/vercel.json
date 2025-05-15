@@ -11,5 +11,11 @@
       "src": "/(.*)",
       "dest": "app.js"
     }
-  ]
+  ],
+  "env": {
+    "NODE_ENV": "production"
+  },
+  "github": {
+    "silent": true
+  }
 }

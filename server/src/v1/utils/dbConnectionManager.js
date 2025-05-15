@@ -2,54 +2,103 @@ const mongoose = require('mongoose');
 
 /**
  * Manages MongoDB connections to prevent leaks and timeouts
+ * Optimized for both traditional and serverless environments
  */
 class DatabaseConnectionManager {
   constructor() {
     this.isConnected = false;
     this.connectionTimeout = null;
     this.MAX_IDLE_TIME = 30 * 60 * 1000; // 30 minutes
+    this.connectionPromise = null; // Para evitar conexiones múltiples simultáneas
   }
 
   /**
    * Connects to MongoDB with the given options
+   * Optimized for serverless environments with connection caching
    */
   async connect(url, options = {}) {
-    if (this.isConnected) {
+    // Si ya tenemos una conexión en proceso, esperamos a que termine
+    if (this.connectionPromise) {
+      return this.connectionPromise;
+    }
+    
+    // Si ya estamos conectados, reutilizamos la conexión
+    if (this.isConnected && mongoose.connection.readyState === 1) {
       console.log('Using existing MongoDB connection');
-      // Reset the timeout since connection is being used
-      this._resetIdleTimeout();
+      
+      // Para entornos no serverless, reseteamos el timeout
+      if (process.env.NODE_ENV !== 'production') {
+        this._resetIdleTimeout();
+      }
+      
       return mongoose.connection;
     }
 
-    try {
-      const connection = await mongoose.connect(url, options);
-      console.log('New MongoDB connection established');
-      this.isConnected = true;
-      
-      // Set up connection event listeners
-      mongoose.connection.on('disconnected', () => {
-        console.log('MongoDB disconnected');
-        this.isConnected = false;
-      });
-      
-      mongoose.connection.on('error', (err) => {
-        console.error('MongoDB connection error:', err);
-      });
-      
-      // Set an idle timeout to close unused connections
-      this._resetIdleTimeout();
-      
-      return connection;
-    } catch (error) {
-      console.error('Failed to connect to MongoDB:', error);
-      throw error;
-    }
-  }
+    // Creamos una nueva promesa de conexión
+    this.connectionPromise = (async () => {
+      try {
+        // Asegurarnos de que la URL de MongoDB está definida
+        if (!url) {
+          console.error('MongoDB URL is not defined');
+          throw new Error('MongoDB URL is not defined. Check your environment variables.');
+        }
+        
+        // Opciones optimizadas para Vercel
+        const serverlessOptions = {
+          ...options,
+          bufferCommands: false, // Deshabilitar para entornos serverless
+          serverSelectionTimeoutMS: 10000, // Reducir timeout para serverless
+          socketTimeoutMS: 20000,
+        };
+        
+        // Aplicar opciones según el entorno
+        const finalOptions = process.env.NODE_ENV === 'production' 
+          ? serverlessOptions 
+          : options;
 
+        console.log('Connecting to MongoDB...');
+        const connection = await mongoose.connect(url, finalOptions);
+        console.log('New MongoDB connection established');
+        this.isConnected = true;
+        
+        // Set up connection event listeners
+        mongoose.connection.on('disconnected', () => {
+          console.log('MongoDB disconnected');
+          this.isConnected = false;
+        });
+        
+        mongoose.connection.on('error', (err) => {
+          console.error('MongoDB connection error:', err);
+        });
+        
+        // Set an idle timeout to close unused connections (solo para entornos no serverless)
+        if (process.env.NODE_ENV !== 'production') {
+          this._resetIdleTimeout();
+        }
+        
+        return connection;
+      } catch (error) {
+        console.error('Failed to connect to MongoDB:', error);
+        this.isConnected = false;
+        throw error;
+      } finally {
+        // Limpiar la promesa de conexión cuando termine
+        this.connectionPromise = null;
+      }
+    })();
+    
+    return this.connectionPromise;
+  }
   /**
    * Resets the idle timeout - called when the connection is used
+   * Solo se usa en entornos no serverless
    */
   _resetIdleTimeout() {
+    // No usar timeouts en entornos serverless como Vercel
+    if (process.env.NODE_ENV === 'production') {
+      return;
+    }
+    
     if (this.connectionTimeout) {
       clearTimeout(this.connectionTimeout);
     }

@@ -16,27 +16,48 @@ const mongooseOptions = {
 
 /**
  * Initialize MongoDB connection with improved options and error handling
+ * Optimizada para entornos serverless y tradicionales
  */
 const connectToDatabase = async () => {
   try {
-    await dbConnectionManager.connect(process.env.MONGODB_URL, mongooseOptions);
-    console.log(`MongoDB connected successfully to ${process.env.MONGODB_URL}`);
+    // Verificar que la URL de MongoDB esté definida
+    const mongoDbUrl = process.env.MONGODB_URL;
     
-    // Add event listeners for connection issues
-    mongoose.connection.on('error', err => {
-      console.error('MongoDB connection error:', err);
-    });
+    if (!mongoDbUrl) {
+      const error = new Error('MONGODB_URL environment variable is not defined');
+      console.error('MongoDB connection error:', error);
+      throw error;
+    }
     
-    mongoose.connection.on('disconnected', () => {
-      console.warn('MongoDB disconnected. Attempting to reconnect...');
-    });
+    // Eliminar posible información sensible para los logs
+    const sanitizedUrl = mongoDbUrl.replace(/:([^:@]+)@/, ':***@');
     
-    // Graceful shutdown handling
-    process.on('SIGINT', async () => {
-      await dbConnectionManager.disconnect();
-      console.log('MongoDB connection closed due to app termination');
-      process.exit(0);
-    });
+    // Conectar a la base de datos
+    await dbConnectionManager.connect(mongoDbUrl, mongooseOptions);
+    console.log(`MongoDB connected successfully to ${sanitizedUrl}`);
+    
+    // Add event listeners for connection issues (solo si no están ya configurados)
+    if (mongoose.connection.listenerCount('error') === 0) {
+      mongoose.connection.on('error', err => {
+        console.error('MongoDB connection error:', err);
+      });
+    }
+    
+    if (mongoose.connection.listenerCount('disconnected') === 0) {
+      mongoose.connection.on('disconnected', () => {
+        console.warn('MongoDB disconnected. Will reconnect on next request.');
+      });
+    }
+    
+    // Graceful shutdown handling (solo para entornos no serverless)
+    if (process.env.NODE_ENV !== 'production' && 
+        process.listenerCount('SIGINT') === 0) {
+      process.on('SIGINT', async () => {
+        await dbConnectionManager.disconnect();
+        console.log('MongoDB connection closed due to app termination');
+        process.exit(0);
+      });
+    }
     
     return mongoose.connection;
   } catch (err) {
