@@ -58,18 +58,13 @@ class DatabaseConnectionManager {
         // Opciones optimizadas para Vercel
         const serverlessOptions = {
           ...options,
-          bufferCommands: false,          // Deshabilitar para entornos serverless
-          serverSelectionTimeoutMS: 15000, // Aumentado para Vercel
-          socketTimeoutMS: 30000,         // Aumentado para Vercel
-          heartbeatFrequencyMS: 30000,    // Reducir frecuencia de heartbeat
-          // Auto reconnect options
-          autoReconnect: true,
-          reconnectTries: Number.MAX_VALUE,
-          reconnectInterval: 1000,
-          // Pooling options
-          minPoolSize: process.env.NODE_ENV === 'production' ? 1 : 5,
-          maxPoolSize: process.env.NODE_ENV === 'production' ? 10 : 10,
-          connectTimeoutMS: 30000
+          bufferCommands: false,
+          serverSelectionTimeoutMS: 10000,
+          socketTimeoutMS: 30000,
+          heartbeatFrequencyMS: 30000,
+          minPoolSize: 1,
+          maxPoolSize: 10,
+          connectTimeoutMS: 10000
         };
         
         // Aplicar opciones según el entorno
@@ -79,7 +74,7 @@ class DatabaseConnectionManager {
 
         // Implementar lógica de reintento
         let retryCount = 0;
-        const maxRetries = 3;
+        const maxRetries = 2;
         
         while (retryCount < maxRetries) {
           try {
@@ -88,10 +83,8 @@ class DatabaseConnectionManager {
             console.log(`MongoDB connection established successfully on attempt ${retryCount + 1}`);
             this.isConnected = true;
             
-            // Configurar gestión de eventos para la conexión
             this._setupConnectionEventHandlers();
             
-            // Set an idle timeout to close unused connections (solo para entornos no serverless)
             if (process.env.NODE_ENV !== 'production') {
               this._resetIdleTimeout();
             }
@@ -106,8 +99,7 @@ class DatabaseConnectionManager {
               throw err;
             }
             
-            // Esperar antes de intentar de nuevo (backoff exponencial)
-            const waitTime = Math.min(1000 * Math.pow(2, retryCount), 10000);
+            const waitTime = 1000;
             console.log(`Waiting ${waitTime}ms before retrying...`);
             await new Promise(resolve => setTimeout(resolve, waitTime));
           }
