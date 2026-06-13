@@ -19,7 +19,7 @@
     "nodemon": "^2.0.18"
   },
   "engines": {
-    "node": "18.x",
+    "node": "24.x",
     "yarn": "1.x"
   }
 }
