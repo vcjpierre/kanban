@@ -90,8 +90,7 @@ const CONNECTION_CACHE_TIME = 30000; // 30 segundos
 const initializeDatabase = async (forceReconnect = false) => {
   const now = Date.now();
   
-  // Si ya estamos conectados y no se fuerza la reconexión, simplemente retornamos
-  if (isConnected && !forceReconnect) {
+  if (isConnected && !forceReconnect && mongoose.connection.readyState === 1) {
     return true;
   }
   

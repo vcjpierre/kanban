@@ -36,85 +36,64 @@ class DatabaseConnectionManager {
       return mongoose.connection;
     }
     
-    // Si la conexión está en estado cerrado o en error, limpiamos primero
     if (readyState === 0 || readyState === 3) {
       console.log('Previous connection is closed or in error state. Creating new connection...');
-      // En entornos serverless, mongoose puede mantener referencias a conexiones cerradas
-      // Limpiamos todas las conexiones y eventos anteriores
-      mongoose.connections.forEach((conn) => {
-        conn.removeAllListeners();
-      });
-      mongoose.disconnect();
+      mongoose.connections.forEach((conn) => conn.removeAllListeners());
+      try { await mongoose.disconnect(); } catch (e) { /* ignore */ }
       this.isConnected = false;
-    }    // Creamos una nueva promesa de conexión
-    this.connectionPromise = (async () => {
-      try {
-        // Asegurarnos de que la URL de MongoDB está definida
-        if (!url) {
-          console.error('MongoDB URL is not defined');
-          throw new Error('MongoDB URL is not defined. Check your environment variables.');
-        }
-        
-        // Opciones optimizadas para Vercel
-        const serverlessOptions = {
-          ...options,
-          bufferCommands: false,
-          serverSelectionTimeoutMS: 10000,
-          socketTimeoutMS: 30000,
-          heartbeatFrequencyMS: 30000,
-          minPoolSize: 1,
-          maxPoolSize: 10,
-          connectTimeoutMS: 10000
-        };
-        
-        // Aplicar opciones según el entorno
-        const finalOptions = process.env.NODE_ENV === 'production' 
-          ? serverlessOptions 
-          : options;
-
-        // Implementar lógica de reintento
-        let retryCount = 0;
-        const maxRetries = 2;
-        
-        while (retryCount < maxRetries) {
-          try {
-            console.log(`Connecting to MongoDB (attempt ${retryCount + 1} of ${maxRetries})...`);
-            const connection = await mongoose.connect(url, finalOptions);
-            console.log(`MongoDB connection established successfully on attempt ${retryCount + 1}`);
-            this.isConnected = true;
-            
-            this._setupConnectionEventHandlers();
-            
-            if (process.env.NODE_ENV !== 'production') {
-              this._resetIdleTimeout();
-            }
-            
-            return connection;
-          } catch (err) {
-            retryCount++;
-            console.error(`MongoDB connection attempt ${retryCount} failed:`, err.message);
-            
-            if (retryCount >= maxRetries) {
-              console.error('All connection attempts failed. Giving up.');
-              throw err;
-            }
-            
-            const waitTime = 1000;
-            console.log(`Waiting ${waitTime}ms before retrying...`);
-            await new Promise(resolve => setTimeout(resolve, waitTime));
-          }
-        }
-      } catch (error) {
-        console.error('Failed to connect to MongoDB after retries:', error);
-        this.isConnected = false;
-        throw error;
-      } finally {
-        // Limpiar la promesa de conexión cuando termine
-        this.connectionPromise = null;
-      }
-    })();
+    }
     
+    this.connectionPromise = this._connect(url, options);
     return this.connectionPromise;
+  }
+
+  async _connect(url, options) {
+    try {
+      if (!url) {
+        throw new Error('MongoDB URL is not defined. Check your environment variables.');
+      }
+      
+      const serverlessOptions = {
+        ...options,
+        bufferCommands: false,
+        serverSelectionTimeoutMS: 10000,
+        socketTimeoutMS: 30000,
+        heartbeatFrequencyMS: 30000,
+        minPoolSize: 1,
+        maxPoolSize: 10,
+        connectTimeoutMS: 10000
+      };
+      
+      const finalOptions = process.env.NODE_ENV === 'production' 
+        ? serverlessOptions 
+        : options;
+
+      let retryCount = 0;
+      const maxRetries = 2;
+      
+      while (retryCount < maxRetries) {
+        try {
+          console.log(`Connecting to MongoDB (attempt ${retryCount + 1}/${maxRetries})...`);
+          const connection = await mongoose.connect(url, finalOptions);
+          console.log(`MongoDB connected on attempt ${retryCount + 1}`);
+          this.isConnected = true;
+          this._setupConnectionEventHandlers();
+          if (process.env.NODE_ENV !== 'production') this._resetIdleTimeout();
+          return connection;
+        } catch (err) {
+          retryCount++;
+          console.error(`MongoDB connection attempt ${retryCount} failed:`, err.message);
+          if (retryCount >= maxRetries) throw err;
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      }
+    } catch (error) {
+      console.error('Failed to connect to MongoDB:', error);
+      this.isConnected = false;
+      throw error;
+    } finally {
+      this.connectionPromise = null;
+    }
   }
   /**
    * Resets the idle timeout - called when the connection is used
