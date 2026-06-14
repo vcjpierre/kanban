@@ -52,7 +52,11 @@ exports.register = async (req, res) => {
 exports.login = async (req, res) => {
   const { username, password } = req.body
   try {
-    // Verificar que la conexión a MongoDB esté activa
+    // Esperar hasta 10s a que la conexión esté lista (para cold starts)
+    for (let i = 0; i < 20; i++) {
+      if (mongoose.connection.readyState === 1) break;
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
     if (mongoose.connection.readyState !== 1) {
       console.warn('MongoDB connection not ready during login attempt');
       return res.status(503).json({

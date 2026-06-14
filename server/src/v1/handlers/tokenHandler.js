@@ -23,10 +23,14 @@ exports.verifyToken = async (req, res, next) => {
   const tokenDecoded = tokenDecode(req)
   if (tokenDecoded) {
     try {
-      // Verificar que la conexión a MongoDB esté activa
-      const readyState = require('mongoose').connection.readyState;
-      if (readyState !== 1) {
-        console.warn('MongoDB connection not ready during token verification. Status:', readyState);
+      // Esperar hasta 10s a que la conexión esté lista (para cold starts)
+      const mongoose = require('mongoose');
+      for (let i = 0; i < 20; i++) {
+        if (mongoose.connection.readyState === 1) break;
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+      if (mongoose.connection.readyState !== 1) {
+        console.warn('MongoDB connection not ready during token verification. Status:', mongoose.connection.readyState);
         return res.status(503).json({
           errors: [{
             param: 'database',
